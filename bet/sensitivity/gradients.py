@@ -326,7 +326,7 @@ def calculate_gradients_rbf(samples, data, centers=None, num_neighbors=None,
 
     if normalize:
         # Compute the norm of each vector
-        norm_gradient_tensor = np.linalg.norm(gradient_tensor, axis=2)
+        norm_gradient_tensor = np.linalg.norm(gradient_tensor, ord=1, axis=2)
 
         # If it is a zero vector (has 0 norm), set norm=1, avoid divide by zero
         norm_gradient_tensor[norm_gradient_tensor == 0] = 1.0
@@ -379,7 +379,7 @@ def calculate_gradients_ffd(samples, data, normalize=True):
 
     if normalize:
         # Compute the norm of each vector
-        norm_gradient_tensor = np.linalg.norm(gradient_tensor, axis=2)
+        norm_gradient_tensor = np.linalg.norm(gradient_tensor, ord=1, axis=2)
 
         # If it is a zero vector (has 0 norm), set norm=1, avoid divide by zero
         norm_gradient_tensor[norm_gradient_tensor == 0] = 1.0
@@ -437,7 +437,7 @@ def calculate_gradients_cfd(samples, data, normalize=True):
 
     if normalize:
         # Compute the norm of each vector
-        norm_gradient_tensor = np.linalg.norm(gradient_tensor, axis=2)
+        norm_gradient_tensor = np.linalg.norm(gradient_tensor, ord=1, axis=2)
 
         # If it is a zero vector (has 0 norm), set norm=1, avoid divide by zero
         norm_gradient_tensor[norm_gradient_tensor == 0] = 1.0

@@ -45,6 +45,45 @@ def calculate_avg_condnum(grad_tensor, qoi_set):
 
     return condnum, singvals
 
+def calculate_avg_measure(grad_tensor, qoi_set, bin_measure=None):
+    r"""
+    Given gradient vectors at some points (centers) in the parameter space
+    and given a specific set of QoIs, calculate the average measure of the 
+    inverse image of a box in the data space assuming the mapping is linear near
+    each center.
+
+    :param grad_tensor: Gradient vectors at each point of interest in the
+        parameter space :math:`\Lambda` for each QoI map.
+    :type grad_tensor: :class:`np.ndarray` of shape (num_centers, num_qois,
+        Lambda_dim) where num_centers is the number of points in :math:`\Lambda`
+        we have approximated the gradient vectors and num_qois is the total
+        number of possible QoIs to choose from
+    :param list qoi_set: List of QoI indices
+
+    :rtype: tuple
+    :returns: (condnum, singvals) where condnum is a float and singvals
+        has shape (num_centers, Data_dim)
+
+    """
+    if bin_measure is None:
+        bin_measure = 1.0
+
+    # Calculate the singular values at each center
+    #print grad_tensor[0, qoi_set, :]
+    singvals = np.linalg.svd(grad_tensor[:, qoi_set, :], compute_uv=False)
+
+    # Find the centers that have atleast one zero singular value
+    indz = singvals[:, -1] == 0
+    indnz = singvals[:, -1] != 0
+
+    # If a center has atleast one zero singular value, we add 1E20 to the
+    # average measure.  For the centers with no zero singular values, we find
+    # the average measure.
+    avg_prod_singvals = np.sum(np.prod(singvals[indnz, :], axis=1)) / len(indnz)# + np.sum(indz)  * 1E20
+    avg_measure = bin_measure / avg_prod_singvals
+
+    return avg_measure, singvals
+
 def chooseOptQoIs(grad_tensor, qoiIndices=None, num_qois_return=None,
         num_optsets_return=None):
     r"""
@@ -142,7 +181,7 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
     optsingvals_tensor = np.zeros([num_centers, num_qois_return,
         num_optsets_return])
     for qoi_set in range(len(qoi_combs)):
-        (current_condnum, singvals) = calculate_avg_condnum(grad_tensor, qoi_combs[qoi_set])
+        (current_condnum, singvals) = calculate_avg_measure(grad_tensor, qoi_combs[qoi_set])
 
         if current_condnum < condnum_indices_mat[-1, 0]:
             condnum_indices_mat[-1, :] = np.append(np.array([current_condnum]),
