@@ -59,9 +59,11 @@ def calculate_avg_measure(grad_tensor, qoi_set, bin_measure=None):
         we have approximated the gradient vectors and num_qois is the total
         number of possible QoIs to choose from
     :param list qoi_set: List of QoI indices
+    :param float bin_measure: The measure of the Data_dim hyperrectangle to
+        invert into :math:`\Lambda`
 
     :rtype: tuple
-    :returns: (condnum, singvals) where condnum is a float and singvals
+    :returns: (avg_measure, singvals) where avg_measure is a float and singvals
         has shape (num_centers, Data_dim)
 
     """

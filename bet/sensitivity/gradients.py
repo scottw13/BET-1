@@ -342,7 +342,7 @@ def calculate_gradients_ffd(samples, data, normalize=True):
     Approximate gradient vectors at ``num_centers, centers.shape[0]`` points
     in the parameter space for each QoI map.  THIS METHOD IS DEPENDENT ON USING
     :meth:~bet.sensitivity.gradients.pick_ffd_points TO CHOOSE SAMPLES FOR THE
-    CFD STENCIL AROUND EACH CENTER. THE ORDERING MATTERS.
+    FFD STENCIL AROUND EACH CENTER. THE ORDERING MATTERS.
 
     :param samples: Samples for which the model has been solved.
     :type samples: :class:`np.ndarray` of shape (num_samples, Lambda_dim)
