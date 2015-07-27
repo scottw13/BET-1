@@ -295,22 +295,21 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
     # product tells us about the angle between the two vectors.
     norm_grad_tensor = np.linalg.norm(grad_tensor, ord=2, axis=2)
 
+    # Remove any QoI that has a zero vector at atleast one of the centers.
+    if remove_zeros:
+        indz = np.array([])
+        for i in range(norm_grad_tensor.shape[1]):
+            if np.sum(norm_grad_tensor[:, i] == 0) > 0:
+                indz = np.append(indz, i)
+    else:
+        indz = []
+
     # If it is a zero vector (has 0 norm), set norm=1, avoid divide by zero
     norm_grad_tensor[norm_grad_tensor == 0] = 1.0
 
     # Normalize each gradient vector
-    grad_tensor = grad_tensor/np.tile(norm_grad_tensor,
-        (Lambda_dim, 1, 1)).transpose(1, 2, 0)
-
-    # Remove any QoI that has a zero vector at atleast one of the centers.
-    if remove_zeros:
-        normG = np.linalg.norm(grad_tensor, axis=2)
-        indz = np.array([])
-        for i in range(normG.shape[1]):
-            if np.sum(normG[:, i] == 0) > 0:
-                indz = np.append(indz, i)
-    else:
-        indz = []
+    grad_tensor = grad_tensor/np.tile(norm_grad_tensor, (Lambda_dim, 1,
+        1)).transpose(1, 2, 0)
 
     if comm.rank == 0:
         print '*** find_unique_vecs ***'
@@ -445,7 +444,7 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
     comm.Barrier()
 
     # Gather the best sets and condition numbers from each processor
-    good_sets = np.array(comm.gather(good_sets, root=0))
+    good_sets = comm.gather(good_sets, root=0)
     best_sets = np.array(comm.gather(best_sets, root=0))
     count_qois = np.array(comm.gather(count_qois, root=0))
 
