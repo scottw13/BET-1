@@ -286,21 +286,21 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
 
     """
 
-    # Normalize the gradient vectors with respect to the 2-norm so the inner
-    # product tells us about the angle between the two vectors.
-    norm_gradient_tensor = np.linalg.norm(gradient_tensor, ord=2, axis=2)
-
-    # If it is a zero vector (has 0 norm), set norm=1, avoid divide by zero
-    norm_gradient_tensor[norm_gradient_tensor == 0] = 1.0
-
-    # Normalize each gradient vector
-    gradient_tensor = gradient_tensor/np.tile(norm_gradient_tensor,
-        (Lambda_dim, 1, 1)).transpose(1, 2, 0)
-
     num_centers = grad_tensor.shape[0]
     Lambda_dim = grad_tensor.shape[2]
     if qoiIndices is None:
         qoiIndices = range(0, grad_tensor.shape[1])
+
+    # Normalize the gradient vectors with respect to the 2-norm so the inner
+    # product tells us about the angle between the two vectors.
+    norm_grad_tensor = np.linalg.norm(grad_tensor, ord=2, axis=2)
+
+    # If it is a zero vector (has 0 norm), set norm=1, avoid divide by zero
+    norm_grad_tensor[norm_grad_tensor == 0] = 1.0
+
+    # Normalize each gradient vector
+    grad_tensor = grad_tensor/np.tile(norm_grad_tensor,
+        (Lambda_dim, 1, 1)).transpose(1, 2, 0)
 
     # Remove any QoI that has a zero vector at atleast one of the centers.
     if remove_zeros:
