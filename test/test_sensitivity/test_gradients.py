@@ -139,11 +139,11 @@ class GradientsMethods:
             self.Lambda_dim))
 
         # Test that each vector is normalized or a zero vector
-        normG = np.linalg.norm(self.G, axis=2)
+        normG = np.linalg.norm(self.G, ord=1, axis=2)
 
         # If its a zero vectors, make it the unit vector in Lambda_dim
-        self.G[normG==0] = 1.0/np.sqrt(self.Lambda_dim)
-        nptest.assert_array_almost_equal(np.linalg.norm(self.G, axis=2),
+        self.G[normG==0] = 1.0/self.Lambda_dim
+        nptest.assert_array_almost_equal(np.linalg.norm(self.G, ord=1, axis=2),
             np.ones((self.G.shape[0], self.G.shape[1])))
 
     def test_calculate_gradients_ffd(self):
@@ -159,11 +159,11 @@ class GradientsMethods:
             self.Lambda_dim))
 
         # Test that each vector is normalized
-        normG = np.linalg.norm(self.G, axis=2)
+        normG = np.linalg.norm(self.G, ord=1, axis=2)
 
         # If its a zero vectors, make it the unit vector in Lambda_dim
-        self.G[normG==0] = 1.0/np.sqrt(self.Lambda_dim)
-        nptest.assert_array_almost_equal(np.linalg.norm(self.G, axis=2),
+        self.G[normG==0] = 1.0/self.Lambda_dim
+        nptest.assert_array_almost_equal(np.linalg.norm(self.G, ord=1, axis=2),
             np.ones((self.G.shape[0], self.G.shape[1])))
 
     def test_calculate_gradients_cfd(self):
@@ -179,11 +179,11 @@ class GradientsMethods:
             self.Lambda_dim))
 
         # Test that each vector is normalized
-        normG = np.linalg.norm(self.G, axis=2)
+        normG = np.linalg.norm(self.G, ord=1, axis=2)
 
         # If its a zero vectors, make it the unit vector in Lambda_dim
-        self.G[normG==0] = 1.0/np.sqrt(self.Lambda_dim)
-        nptest.assert_array_almost_equal(np.linalg.norm(self.G, axis=2),
+        self.G[normG==0] = 1.0/self.Lambda_dim
+        nptest.assert_array_almost_equal(np.linalg.norm(self.G, ord=1, axis=2),
             np.ones((self.G.shape[0], self.G.shape[1])))
 
 # Test the accuracy of the gradient approximation methods

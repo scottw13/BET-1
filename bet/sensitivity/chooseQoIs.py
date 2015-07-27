@@ -295,7 +295,7 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
 
         # If neither of the current QoIs are in the repeat_vec, test them
         if curr_set[0] not in repeat_vec and curr_set[1] not in repeat_vec:
-            curr_inner_prod = np.inner(grad_tensor[:, curr_set[0], :],
+            curr_inner_prod = np.sum(grad_tensor[:, curr_set[0], :] * \
                 grad_tensor[:, curr_set[1], :]) / grad_tensor.shape[0]
 
             # If the innerprod>tol, throw out the second QoI
