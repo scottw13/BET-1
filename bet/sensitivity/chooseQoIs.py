@@ -12,17 +12,16 @@ import sys
 
 def calculate_avg_condnum(grad_tensor, qoi_set):
     r"""
-    Given gradient vectors at some points (centers) in the parameter space
-    and given a specific set of QoIs, caculate the average condition number
-    of the matrices formed by the gradient vectors of each QoI map at each
-    center.
+    Given gradient vectors at some points (centers) in the parameter space and
+    given a specific set of QoIs, caculate the average condition number of the
+    matrices formed by the gradient vectors of each QoI map at each center.
 
-    :param grad_tensor: Gradient vectors at each point of interest in the
-        parameter space :math:`\Lambda` for each QoI map.
+    :param grad_tensor: Gradient vectors at each center in the parameter space
+        :math:`\Lambda` for each QoI map.
     :type grad_tensor: :class:`np.ndarray` of shape (num_centers, num_qois,
         Lambda_dim) where num_centers is the number of points in :math:`\Lambda`
-        we have approximated the gradient vectors and num_qois is the total
-        number of possible QoIs to choose from
+        we have approximated the gradient vectors and num_qois is the number of
+        QoIs we are given.
     :param list qoi_set: List of QoI indices
 
     :rtype: tuple
@@ -30,16 +29,18 @@ def calculate_avg_condnum(grad_tensor, qoi_set):
         has shape (num_centers, Data_dim)
 
     """
-    # Calculate the singular values at each center
+    # Calculate the singular values of the matrix formed by the gradient
+    # vectors of each QoI map.  This gives a set of singular values for each
+    # center.
     singvals = np.linalg.svd(grad_tensor[:, qoi_set, :], compute_uv=False)
 
-    # Find the centers that have atleast one zero singular value
+    # Find the centers that have atleast one zero singular value.
     indz = singvals[:, -1] == 0
     indnz = singvals[:, -1] != 0
 
-    # If a center has atleast one zero singular value, we add 1E20 to the
-    # average condition number.  For the centers with no zero singular values,
-    # we find the average condition number.
+    # For each center that has atleast one zero singular value, we add 1E20 to
+    # the average condition number.  For the centers with no zero singular
+    # values, we find the average condition number.
     condnum = np.sum(singvals[indnz, 0] / singvals[indnz, -1], axis=0) / len(\
         indnz) + np.sum(indz)  * 1E20
 
@@ -47,12 +48,13 @@ def calculate_avg_condnum(grad_tensor, qoi_set):
 
 def calculate_avg_volume(grad_tensor, qoi_set, bin_volume=None):
     r"""
-    If you are using ``bin_ratio`` to define the hyperrectangle in the Data space
-    you must must give this method gradient vectors normalized with respect to
-    the 1-norm.  If you are using ``bin_size`` to define the hyperrectangle in the
-    Data space you must give this method the original gradient vectors, if you
-    also give a ``bin_volume``, this method will approximate the volume of the
-    region of non-zero probability in the inverse solution.
+    If you are using ``bin_ratio`` to define the hyperrectangle in the Data
+    space you must must give this method gradient vectors normalized with
+    respect to the 1-norm.  If you are using ``bin_size`` to define the
+    hyperrectangle in the Data space you must give this method the original
+    gradient vectors. If you also give a ``bin_volume``, this method will
+    approximate the volume of the region of non-zero probability in the inverse
+    solution.
 
     Given gradient vectors at some points (centers) in the parameter space
     and given a specific set of QoIs, calculate the average volume of the 
@@ -63,8 +65,8 @@ def calculate_avg_volume(grad_tensor, qoi_set, bin_volume=None):
         parameter space :math:`\Lambda` for each QoI map.
     :type grad_tensor: :class:`np.ndarray` of shape (num_centers, num_qois,
         Lambda_dim) where num_centers is the number of points in :math:`\Lambda`
-        we have approximated the gradient vectors and num_qois is the total
-        number of possible QoIs to choose from
+        we have approximated the gradient vectors and num_qois is the number of
+        QoIs we are given.
     :param list qoi_set: List of QoI indices
     :param float bin_volume: The volume of the Data_dim hyperrectangle to
         invert into :math:`\Lambda`
@@ -74,23 +76,27 @@ def calculate_avg_volume(grad_tensor, qoi_set, bin_volume=None):
         has shape (num_centers, Data_dim)
 
     """
+    # If no volume is given, we consider how this set of QoIs we change the
+    # volume of the unit hypercube.
     if bin_volume is None:
         bin_volume = 1.0
 
-    # Calculate the singular values at each center
+    # Calculate the singular values of the matrix formed by the gradient
+    # vectors of each QoI map.  This gives a set of singular values for each
+    # center.
     singvals = np.linalg.svd(grad_tensor[:, qoi_set, :], compute_uv=False)
 
     # Find the centers that have atleast one zero singular value
     indz = singvals[:, -1] == 0
     indnz = singvals[:, -1] != 0
 
-    # If a center has atleast one zero singular value, we add 1E20 to the
-    # average volume.  For the centers with no zero singular values, we find
-    # the average volume.
-    avg_prod_singvals = np.sum(np.prod(singvals[indnz, :], axis=1)) / len(indnz)
-    if avg_prod_singvals == 0:
+    # Find the average produt of the singular values over each center, then use
+    # this to compute the average volume of the inverse solution.
+    if np.sum(indnz) == 0:
         avg_volume = 1E98
     else:
+        avg_prod_singvals = np.sum(np.prod(singvals[indnz, :], axis=1)) \
+            /len(indnz)
         avg_volume = bin_volume / avg_prod_singvals
 
     return avg_volume, singvals
@@ -101,8 +107,11 @@ def chooseOptQoIs(grad_tensor, qoiIndices=None, num_qois_return=None,
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     set of QoIs to choose from, and the number of desired QoIs to return, this
-    method returns the ``num_optsets_return`` best sets of QoIs with with repsect
-    to skewness properties.  This method is brute force, i.e., if the method is
+    method returns the ``num_optsets_return`` best sets of QoIs with with
+    repsect to either the average condition number of the matrix formed by the
+    gradient vectors of each QoI map, or the average volume of the inverse
+    problem us this set of QoIs, computed as the product of the singular values
+    of the same matrix.  This method is brute force, i.e., if the method is
     given 10,000 QoIs and told to return the N best sets of 3, it will check all
     10,000 choose 3 possible sets.  See chooseOptQoIs_large for a less
     computationally expensive approach.
@@ -132,7 +141,7 @@ def chooseOptQoIs(grad_tensor, qoiIndices=None, num_qois_return=None,
     """
     (condnum_indices_mat, _) = chooseOptQoIs_verbose(grad_tensor,
         qoiIndices, num_qois_return, num_optsets_return, inner_prod_tol, volume,
-        reomve_zeros)
+        remove_zeros)
 
     return condnum_indices_mat
 
@@ -142,10 +151,11 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     set of QoIs to choose from, and the number of desired QoIs to return, this
-    method returns the ``num_optsets_return`` best sets of QoIs with with repsect
-    to skewness properties and a tensor that represents the singular values of
-    the matrices formed by the gradient vectors of the optimal QoIs at each
-    center is returned.  This method is brute force, i.e., if the method is
+    method returns the ``num_optsets_return`` best sets of QoIs with with
+    repsect to either the average condition number of the matrix formed by the
+    gradient vectors of each QoI map, or the average volume of the inverse
+    problem us this set of QoIs, computed as the product of the singular values
+    of the same matrix.  This method is brute force, i.e., if the method is
     given 10,000 QoIs and told to return the N best sets of 3, it will check all
     10,000 choose 3 possible sets.  See chooseOptQoIs_large for a less
     computationally expensive approach.
@@ -163,7 +173,7 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
         inverse problem.  Default is Lambda_dim
     :param int num_optsets_return: Number of best sets to return
         Default is 10
-    :param boolean volume: If measur eif True, use ``calculate_avg_volume``
+    :param boolean volume: If volume is True, use ``calculate_avg_volume``
         to determine optimal QoIs
     :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
         QoIs that have a zero gradient vector at atleast one point in
@@ -254,6 +264,7 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
     Given gradient vectors at each center in the parameter space, sort throught
     them and remove any QoI that has a zero vector at any center, then remove
     one from any pair of QoIs that have an average inner product greater than
+    some tolerance, i.e., an average angle between the two vectors smaller than
     some tolerance.
 
     :param grad_tensor: Gradient vectors at each point of interest in the
@@ -262,7 +273,8 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
         where num_centers is the number of points in :math:'\Lambda' we have
         approximated the gradient vectors, num_qois is the total number of
         possible QoIs to choose from, Ldim is the dimension of :math:`\Lambda`.
-    :param float inner_prod_tol: A real number between 0 and 1.
+    :param float inner_prod_tol: Maximum acceptable average inner product
+        between two QoI maps.
     :param qoiIndices: Set of QoIs to consider.
     :type qoiIndices: :class:'`np.ndarray` of size (1, num QoIs to consider)
     :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
@@ -299,6 +311,11 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
     # Find all num_qois choose 2 pairs of QoIs
     qoi_combs = np.array(list(combinations(list(qoiIndices), 2)))
 
+    '''
+    NEED TO ADDRESS THE NORMALIZED VECTORS ISSUE HERE!!!
+    Now 1-normed sooo....
+    '''
+
     # For each pair, check the angle between the vectors and throw out the
     # second QoI if the angle is below some tolerance.  At this point all the
     # vectors are normalized, so the inner product will be between -1 and 1.
@@ -322,7 +339,7 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
     return unique_vecs
 
 def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
-        num_optsets_return, inner_prod_tol, cond_tol, volume=False):
+        num_optsets_return, cond_tol, volume):
     r"""
     #TODO:  Use the idea we only know vectors are with 10% accuracy to guide
         inner_prod tol and condnum_tol.
@@ -342,11 +359,9 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
     :param unique_indices: Unique QoIs to consider.
     :type unique_indices: :class:'np.ndarray' of size (num_unique_qois, 1)
     :param int num_optsets_return: Number of best sets to return
-    :param float inner_prod_tol: Throw out one vectors from each pair of QoIs
-        that has average inner product greater than this.
     :param float cond_tol: Throw out all sets of QoIs with average condition
         number greater than this.
-    :param boolean volume: If measur eif True, use ``calculate_avg_volume``
+    :param boolean volume: If volume is True, use ``calculate_avg_volume``
         to determine optimal QoIs
 
     :rtype: tuple
@@ -402,7 +417,7 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
                     qoi_combs[qoi_set])
             else:
                 (current_condnum, singvals) = calculate_avg_volume(grad_tensor,
-                qoi_combs[qoi_set])
+                    qoi_combs[qoi_set])
 
             # If its a good set, add it to good_sets
             if current_condnum < cond_tol:
@@ -462,9 +477,9 @@ def chooseOptQoIs_large(grad_tensor, qoiIndices=None, max_qois_return=None,
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     large set of QoIs to choose from, and the number of desired QoIs to return,
-    this method return the set of optimal QoIs of size 1, 2, ... max_qois_return
+    this method return the set of optimal QoIs of size 2, 3, ... max_qois_return
     to use in the inverse problem by choosing the sets with the smallext average
-    condition number.
+    condition number or volume.
 
     :param grad_tensor: Gradient vectors at each point of interest in the
         parameter space :math:`\Lambda` for each QoI map.
@@ -479,6 +494,10 @@ def chooseOptQoIs_large(grad_tensor, qoiIndices=None, max_qois_return=None,
         inverse problem.  Default is Lambda_dim
     :param int num_optsets_return: Number of best sets to return
         Default is 10
+    :param float inner_prod_tol: Maximum acceptable average inner product
+        between two QoI maps.
+    :param float cond_tol: Throw out all sets of QoIs with average condition
+        number greater than this.
     :param boolean volume: If volume is True, use ``calculate_avg_volume``
         to determine optimal QoIs
     :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
@@ -525,7 +544,7 @@ def chooseOptQoIs_large_verbose(grad_tensor, qoiIndices=None,
         that has average inner product greater than this.  Default is 0.9.
     :param float cond_tol: Throw out all sets of QoIs with average condition
         number greater than this.  Default is max_float.
-    :param boolean volume: If measur eif True, use ``calculate_avg_volume``
+    :param boolean volume: If volume is True, use ``calculate_avg_volume``
         to determine optimal QoIs
     :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
         QoIs that have a zero gradient vector at atleast one point in
@@ -567,7 +586,7 @@ def chooseOptQoIs_large_verbose(grad_tensor, qoiIndices=None,
     for qois_return in range(2, max_qois_return + 1):
         (good_sets_curr, best_sets_curr, optsingvals_tensor_curr) = \
             find_good_sets(grad_tensor, good_sets_curr, unique_indices,
-            num_optsets_return, inner_prod_tol, cond_tol, volume)
+            num_optsets_return, cond_tol, volume)
         best_sets.append(best_sets_curr)
         optsingvals_list.append(optsingvals_tensor_curr)
         if comm.rank == 0:
