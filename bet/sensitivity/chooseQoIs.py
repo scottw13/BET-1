@@ -286,6 +286,17 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
 
     """
 
+    # Normalize the gradient vectors with respect to the 2-norm so the inner
+    # product tells us about the angle between the two vectors.
+    norm_gradient_tensor = np.linalg.norm(gradient_tensor, ord=2, axis=2)
+
+    # If it is a zero vector (has 0 norm), set norm=1, avoid divide by zero
+    norm_gradient_tensor[norm_gradient_tensor == 0] = 1.0
+
+    # Normalize each gradient vector
+    gradient_tensor = gradient_tensor/np.tile(norm_gradient_tensor,
+        (Lambda_dim, 1, 1)).transpose(1, 2, 0)
+
     num_centers = grad_tensor.shape[0]
     Lambda_dim = grad_tensor.shape[2]
     if qoiIndices is None:
@@ -310,11 +321,6 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
 
     # Find all num_qois choose 2 pairs of QoIs
     qoi_combs = np.array(list(combinations(list(qoiIndices), 2)))
-
-    '''
-    NEED TO ADDRESS THE NORMALIZED VECTORS ISSUE HERE!!!
-    Now 1-normed sooo....
-    '''
 
     # For each pair, check the angle between the vectors and throw out the
     # second QoI if the angle is below some tolerance.  At this point all the
