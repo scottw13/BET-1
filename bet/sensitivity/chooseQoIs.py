@@ -96,7 +96,8 @@ def calculate_avg_volume(grad_tensor, qoi_set, bin_volume=None):
     return avg_volume, singvals
 
 def chooseOptQoIs(grad_tensor, qoiIndices=None, num_qois_return=None,
-        num_optsets_return=None, inner_prod_tol=1.0, volume=False):
+        num_optsets_return=None, inner_prod_tol=1.0, volume=False,
+        remove_zeros=True):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     set of QoIs to choose from, and the number of desired QoIs to return, this
@@ -119,20 +120,25 @@ def chooseOptQoIs(grad_tensor, qoiIndices=None, num_qois_return=None,
         inverse problem.  Default is Lambda_dim
     :param int num_optsets_return: Number of best sets to return
         Default is 10
-    :param boolean volume: If measur eif True, use ``calculate_avg_volume``
+    :param boolean volume: If measure is True, use ``calculate_avg_volume``
         to determine optimal QoIs
+    :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
+        QoIs that have a zero gradient vector at atleast one point in
+        :math:`\Lambda`.
 
     :rtype: `np.ndarray` of shape (num_optsets_returned, num_qois_returned + 1)
     :returns: condnum_indices_mat
 
     """
     (condnum_indices_mat, _) = chooseOptQoIs_verbose(grad_tensor,
-        qoiIndices, num_qois_return, num_optsets_return, inner_prod_tol, volume)
+        qoiIndices, num_qois_return, num_optsets_return, inner_prod_tol, volume,
+        reomve_zeros)
 
     return condnum_indices_mat
 
 def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
-            num_optsets_return=None, inner_prod_tol=1.0, volume=False):
+            num_optsets_return=None, inner_prod_tol=1.0, volume=False,
+            remove_zeros=True):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     set of QoIs to choose from, and the number of desired QoIs to return, this
@@ -159,6 +165,9 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
         Default is 10
     :param boolean volume: If measur eif True, use ``calculate_avg_volume``
         to determine optimal QoIs
+    :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
+        QoIs that have a zero gradient vector at atleast one point in
+        :math:`\Lambda`.
 
     :rtype: tuple
     :returns: (condnum_indices_mat, optsingvals) where condnum_indices_mat has
@@ -175,7 +184,8 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
     if num_optsets_return is None:
         num_optsets_return = 10
 
-    qoiIndices = find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices)
+    qoiIndices = find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices,
+        remove_zeros)
 
     # Find all posible combinations of QoIs
     if comm.rank == 0:
@@ -197,9 +207,11 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
         num_optsets_return])
     for qoi_set in range(len(qoi_combs)):
         if volume == False:
-            (current_condnum, singvals) = calculate_avg_condnum(grad_tensor, qoi_combs[qoi_set])
+            (current_condnum, singvals) = calculate_avg_condnum(grad_tensor,
+                qoi_combs[qoi_set])
         else:
-            (current_condnum, singvals) = calculate_avg_volume(grad_tensor, qoi_combs[qoi_set])
+            (current_condnum, singvals) = calculate_avg_volume(grad_tensor,
+                qoi_combs[qoi_set])
 
         if current_condnum < condnum_indices_mat[-1, 0]:
             condnum_indices_mat[-1, :] = np.append(np.array([current_condnum]),
@@ -253,8 +265,9 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
     :param float inner_prod_tol: A real number between 0 and 1.
     :param qoiIndices: Set of QoIs to consider.
     :type qoiIndices: :class:'`np.ndarray` of size (1, num QoIs to consider)
-    :param int num_qois_return: Number of desired QoIs to use in the
-        inverse problem.
+    :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
+        QoIs that have a zero gradient vector at atleast one point in
+        :math:`\Lambda`.
 
     :rtype: `np.ndarray` of shape (num_unique_vecs, 1)
     :returns: unique_vecs
@@ -445,7 +458,7 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
 
 def chooseOptQoIs_large(grad_tensor, qoiIndices=None, max_qois_return=None,
         num_optsets_return=None, inner_prod_tol=None, cond_tol=None,
-        volume=False):
+        volume=False, remove_zeros=True):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     large set of QoIs to choose from, and the number of desired QoIs to return,
@@ -468,6 +481,9 @@ def chooseOptQoIs_large(grad_tensor, qoiIndices=None, max_qois_return=None,
         Default is 10
     :param boolean volume: If volume is True, use ``calculate_avg_volume``
         to determine optimal QoIs
+    :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
+        QoIs that have a zero gradient vector at atleast one point in
+        :math:`\Lambda`.
 
     :rtype: tuple
     :returns: (condnum_indices_mat, optsingvals) where condnum_indices_mat has
@@ -476,13 +492,14 @@ def chooseOptQoIs_large(grad_tensor, qoiIndices=None, max_qois_return=None,
 
     """
     (best_sets, _) = chooseOptQoIs_large_verbose(grad_tensor, qoiIndices,
-        max_qois_return, num_optsets_return, inner_prod_tol, cond_tol, volume)
+        max_qois_return, num_optsets_return, inner_prod_tol, cond_tol, volume,
+        remove_zeros)
 
     return best_sets
 
 def chooseOptQoIs_large_verbose(grad_tensor, qoiIndices=None,
         max_qois_return=None, num_optsets_return=None, inner_prod_tol=None,
-        cond_tol=None, volume=False):
+        cond_tol=None, volume=False, remove_zeros=True):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     large set of QoIs to choose from, and the number of desired QoIs to return,
@@ -510,6 +527,9 @@ def chooseOptQoIs_large_verbose(grad_tensor, qoiIndices=None,
         number greater than this.  Default is max_float.
     :param boolean volume: If measur eif True, use ``calculate_avg_volume``
         to determine optimal QoIs
+    :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
+        QoIs that have a zero gradient vector at atleast one point in
+        :math:`\Lambda`.
 
 
     :rtype: tuple
@@ -534,7 +554,8 @@ def chooseOptQoIs_large_verbose(grad_tensor, qoiIndices=None,
         cond_tol = sys.float_info[0]
 
     # Find the unique QoIs to consider
-    unique_indices = find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices)
+    unique_indices = find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices,
+        remove_zeros)
     if comm.rank == 0:
         print 'Unique Indices are : ', unique_indices
 
@@ -553,5 +574,3 @@ def chooseOptQoIs_large_verbose(grad_tensor, qoiIndices=None,
             print best_sets_curr
 
     return (best_sets, optsingvals_list)
-
-
