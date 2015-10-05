@@ -29,17 +29,30 @@ def calculate_avg_condnum(grad_tensor, qoi_set):
     # Calculate the singular values of the matrix formed by the gradient
     # vectors of each QoI map.  This gives a set of singular values for each
     # center.
-    singvals = np.linalg.svd(grad_tensor[:, qoi_set, :], compute_uv=False)
-    indz = singvals[:, -1] == 0
-    if np.sum(indz) == singvals.shape[0]:
-        hmean_condnum = np.inf
-    else:
-        singvals[indz, 0] = np.inf
-        singvals[indz, -1] = 1
-        condnums = singvals[:, 0] / singvals[:, -1]
-        hmean_condnum = stats.hmean(condnums)
+    G = grad_tensor[:, qoi_set, :]
+    num_centers = G.shape[0]
+    data_dim = G.shape[1]
 
-    return hmean_condnum, singvals
+    singvals = np.linalg.svd(G, compute_uv=False)
+    muG = np.tile(np.prod(singvals, axis=1), [data_dim, 1]).transpose()
+
+    muGi = np.zeros([num_centers, data_dim])
+    for i in range(G.shape[1]):
+        muGi[:, i] = np.prod(np.linalg.svd(np.delete(G, i, axis=1), compute_uv=False), axis=1)
+
+    normgi = np.linalg.norm(G, axis=2)
+    normgiperp = muG / muGi
+
+    skewgi = np.zeros([num_centers, data_dim])
+    skewgi[normgiperp==0] = np.inf
+    skewgi[normgiperp!=0] = normgi[normgiperp!=0] / normgiperp[normgiperp!=0]
+
+    skewG = np.max(skewgi, axis=1)
+
+    skewG[np.isnan(skewG)]=np.inf
+    hmean_skewG = stats.hmean(skewG)
+
+    return hmean_skewG, skewgi
 
 def calculate_avg_volume(grad_tensor, qoi_set, bin_volume=None):
     r"""
