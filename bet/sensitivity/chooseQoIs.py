@@ -102,7 +102,7 @@ def calculate_avg_volume(grad_tensor, qoi_set, bin_volume=None):
 
 def chooseOptQoIs(grad_tensor, qoiIndices=None, num_qois_return=None,
         num_optsets_return=None, inner_prod_tol=1.0, volume=False,
-        remove_zeros=True):
+        remove_zeros=True, bin_volume=None):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     set of QoIs to choose from, and the number of desired QoIs to return, this
@@ -135,15 +135,19 @@ def chooseOptQoIs(grad_tensor, qoiIndices=None, num_qois_return=None,
     :rtype: `np.ndarray` of shape (num_optsets_returned, num_qois_returned + 1)
     :returns: condnum_indices_mat
     """
+
+    if bin_volume is None:
+        bin_volume = 1.0
+
     (condnum_indices_mat, _) = chooseOptQoIs_verbose(grad_tensor,
         qoiIndices, num_qois_return, num_optsets_return, inner_prod_tol, volume,
-        remove_zeros)
+        remove_zeros, bin_volume)
 
     return condnum_indices_mat
 
 def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
             num_optsets_return=None, inner_prod_tol=1.0, volume=False,
-            remove_zeros=True):
+            remove_zeros=True, bin_volume=None):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     set of QoIs to choose from, and the number of desired QoIs to return, this
@@ -187,6 +191,9 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
     if num_optsets_return is None:
         num_optsets_return = 10
 
+    if bin_volume is None:
+        bin_volume = 1.0
+
     qoiIndices = find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices,
         remove_zeros)
 
@@ -214,7 +221,7 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
                 qoi_combs[qoi_set])
         else:
             (current_condnum, singvals) = calculate_avg_volume(grad_tensor,
-                qoi_combs[qoi_set])
+                qoi_combs[qoi_set], bin_volume)
 
         if current_condnum < condnum_indices_mat[-1, 0]:
             condnum_indices_mat[-1, :] = np.append(np.array([current_condnum]),
