@@ -404,14 +404,14 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
                 # If the average condition number is less than the max condition
                 # number in our best_sets, add it to best_sets
                 if current_condnum < best_sets[-1, 0]:
-                    best_sets[-1, :] = np.append(np.array([current_condnum]),
+                    best_sets[count_qois - 1, :] = np.append(np.array([current_condnum]),
                         qoi_combs[qoi_set])
                     order = best_sets[:, 0].argsort()
-                    best_sets = best_sets[order]
+                    #best_sets = best_sets[order]
 
                     # Store the corresponding singular values
                     optsingvals_tensor[:, :, -1] = singvals
-                    optsingvals_tensor = optsingvals_tensor[:, :, order]
+                    #optsingvals_tensor = optsingvals_tensor[:, :, order]
 
     # Wait for all processes to get to this point
     comm.Barrier()
@@ -428,8 +428,8 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
         best_sets = best_sets.reshape(num_optsets_return * \
             comm.size, num_qois_return + 1)
         [temp, uniq_inds_best] = np.unique(best_sets[:, 0], return_index=True)
-        best_sets = best_sets[uniq_inds_best, :]
-        best_sets = best_sets[best_sets[:, 0].argsort()]
+        #best_sets = best_sets[uniq_inds_best, :]
+        #best_sets = best_sets[best_sets[:, 0].argsort()]
         best_sets = best_sets[:num_optsets_return, :]
 
         # Organize the good sets
