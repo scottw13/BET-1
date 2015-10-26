@@ -9,6 +9,7 @@ from itertools import combinations
 from bet.Comm import comm
 import bet.util as util
 from scipy import stats
+import sys
 
 def calculate_avg_skewness(grad_tensor, qoi_set):
     r"""
@@ -46,9 +47,9 @@ def calculate_avg_skewness(grad_tensor, qoi_set):
     skewgi = np.zeros([num_centers, data_dim])
     skewgi[normgiperp==0] = np.inf
     skewgi[normgiperp!=0] = normgi[normgiperp!=0] / normgiperp[normgiperp!=0]
+    skewgi[normgiperp==np.inf] = np.inf
 
     skewG = np.max(skewgi, axis=1)
-
     skewG[np.isnan(skewG)]=np.inf
     hmean_skewG = stats.hmean(skewG)
 
@@ -143,7 +144,7 @@ def chooseOptQoIs(grad_tensor, qoiIndices=None, num_qois_return=None,
 
 def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
             num_optsets_return=None, inner_prod_tol=1.0, volume=False,
-            remove_zeros=True):
+            remove_zeros=True, bin_volume=1.0):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     set of QoIs to choose from, and the number of desired QoIs to return, this
@@ -214,7 +215,7 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
                 qoi_combs[qoi_set])
         else:
             (current_skewness, singvals) = calculate_avg_volume(grad_tensor,
-                qoi_combs[qoi_set])
+                qoi_combs[qoi_set], bin_volume)
 
         if current_skewness < skewness_indices_mat[-1, 0]:
             skewness_indices_mat[-1, :] = np.append(np.array([current_skewness]),
@@ -334,7 +335,7 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
     return unique_vecs
 
 def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
-        num_optsets_return, cond_tol, volume):
+        num_optsets_return, cond_tol, volume, bin_volume):
     r"""
     #TODO:  Use the idea we only know vectors are with 10% accuracy to guide
         inner_prod tol and skewness_tol.
@@ -371,8 +372,7 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
     best_sets[:, 0] = np.inf
     good_sets = np.zeros([1, num_qois_return])
     count_qois = 0
-    optsingvals_tensor = np.zeros([num_centers, num_qois_return,
-        num_optsets_return])
+    optsingvals_tensor = np.zeros([1, 1,1])
 
     # For each good set of size n - 1, find the possible sets of size n and
     # compute the average condition number of each
@@ -408,7 +408,7 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
                     qoi_combs[qoi_set])
             else:
                 (current_skewness, singvals) = calculate_avg_volume(grad_tensor,
-                    qoi_combs[qoi_set])
+                    qoi_combs[qoi_set], bin_volume)
 
             # If its a good set, add it to good_sets
             if current_skewness < cond_tol:
@@ -423,7 +423,7 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
                     #best_sets = best_sets[order]
 
                     # Store the corresponding singular values
-                    optsingvals_tensor[:, :, -1] = singvals
+                    #optsingvals_tensor[:, :, -1] = singvals
                     #optsingvals_tensor = optsingvals_tensor[:, :, order]
 
     # Wait for all processes to get to this point
@@ -464,7 +464,7 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
 
 def chooseOptQoIs_large(grad_tensor, qoiIndices=None, max_qois_return=None,
         num_optsets_return=None, inner_prod_tol=None, cond_tol=None,
-        volume=False, remove_zeros=True):
+        volume=False, remove_zeros=True, bin_volume=1.0):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     large set of QoIs to choose from, and the number of desired QoIs to return,
@@ -500,13 +500,13 @@ def chooseOptQoIs_large(grad_tensor, qoiIndices=None, max_qois_return=None,
     """
     (best_sets, _) = chooseOptQoIs_large_verbose(grad_tensor, qoiIndices,
         max_qois_return, num_optsets_return, inner_prod_tol, cond_tol, volume,
-        remove_zeros)
+        remove_zeros, bin_volume)
 
     return best_sets
 
 def chooseOptQoIs_large_verbose(grad_tensor, qoiIndices=None,
         max_qois_return=None, num_optsets_return=None, inner_prod_tol=None,
-        cond_tol=None, volume=False, remove_zeros=True):
+        cond_tol=None, volume=False, remove_zeros=True, bin_volume=1.0):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     large set of QoIs to choose from, and the number of desired QoIs to return,
@@ -570,7 +570,7 @@ def chooseOptQoIs_large_verbose(grad_tensor, qoiIndices=None,
     for qois_return in range(2, max_qois_return + 1):
         (good_sets_curr, best_sets_curr, optsingvals_tensor_curr) = \
             find_good_sets(grad_tensor, good_sets_curr, unique_indices,
-            num_optsets_return, cond_tol, volume)
+            num_optsets_return, cond_tol, volume, bin_volume)
         best_sets.append(best_sets_curr)
         optsingvals_list.append(optsingvals_tensor_curr)
         if comm.rank == 0:
