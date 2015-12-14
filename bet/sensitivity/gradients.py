@@ -8,8 +8,10 @@ CENTER, THEN THE CLUSTER AROUND THE SECOND CENTER AND SO ON.
 """
 import numpy as np
 import scipy.spatial as spatial
+import scipy.misc as misc
 import bet.util as util
 import sys
+from itertools import combinations
 
 def sample_linf_ball(centers, num_close, rvec, lam_domain=None):
     r"""
@@ -426,3 +428,112 @@ def calculate_gradients_cfd(samples, data, normalize=True):
             (Lambda_dim, 1, 1)).transpose(1, 2, 0)
 
     return gradient_tensor
+
+###############################################################
+# Hessian Methods Below
+###############################################################
+
+def pick_hessian_points(centers, rvec):
+    r"""
+    THESE ARE ORDERED : CENTERS, THEN CLUSTER AROUND FIRST CENTER, CLUSTER AROUND
+    SECOND CENTER AND SO ON.
+
+    INSIDE EACH CLUSTER, THEY ARE ORDERED : x1x2, x1x3, ..., x2x3, ..., xn-1,xn
+    x1x1, x2x2, ..., xnxn
+
+    :param centers: Points in :math:`\mathcal{Q}` to cluster points around
+    :type centers: :class:`np.ndarray` of shape (num_centers, Q_dim)
+    :param rvec: The radius of the stencil, along each axis
+    :type rvec: :class:`np.ndarray` of shape (Q_dim,)
+    :rtype: :class:`np.ndarray` of shape (((Q_dimCHOOSE2 + Q_dim)*4 + 1) * num_centers,
+        Qambda_dim)
+    :returns: Samples for centered finite difference stencil for
+        each point in centers.
+    """
+    Q_dim = centers.shape[1]
+    num_centers = centers.shape[0]
+    num_stencilpts = (int(round(misc.comb(Q_dim, 2))) + Q_dim) * 4
+    samples = np.repeat(centers, num_stencilpts, axis=0)
+    rvec = util.fix_dimensions_vector(rvec)
+
+    stencil = np.zeros([num_stencilpts, Q_dim])
+    onesx = np.array([1, 1, -1, -1])
+    onesy = np.array([1, -1, 1, -1])
+    stencxx = np.array([1, 2, -1, -2])
+    combs = np.array(list(combinations(range(Q_dim), 2)))
+    for i in range(combs.shape[0]):
+        stencil[4 * i:4 * (i + 1), combs[i, 0]] = onesx
+        stencil[4 * i:4 * (i + 1), combs[i, 1]] = onesy
+
+    for i in range(combs.shape[0], combs.shape[0] + Q_dim):
+        stencil[4 * i:4 * (i + 1), i - combs.shape[0]] = stencxx
+
+    # Contstruct a [((Q_dimCHOOSE2 + Q_dim)*4 + 1) * num_centers, Q_dim] matrix that
+    # translates the centers to the HESSIAN points
+    translate = np.tile(stencil, (num_centers, 1)) * rvec
+    print stencil
+    samples = samples + translate
+
+    return np.concatenate([centers, samples])
+
+def calculate_hessian(samples, data):
+    """
+
+    :param samples: Samples for which the model has been solved.
+    :type samples: :class:`np.ndarray` of shape
+        (((Q_dimCHOOSE2 + Q_dim)*4 + 1) * num_centers, Q_dim)
+    :param data: Data values corresponding to each sample.
+    :type data: :class:`np.ndarray` of shape (num_samples, 1)
+    :rtype: :class:`np.ndarray` of shape (Q_dim, Q_dim, num_centers)
+    :returns: Tensor representation of the Hessian at each center
+    """
+    num_samples = samples.shape[0]
+    Q_dim = samples.shape[1]
+    num_samples_percenter = (int(round(misc.comb(Q_dim, 2))) + Q_dim) * 4 + 1
+    num_centers = num_samples / num_samples_percenter
+    num_partials = int(round(misc.comb(Q_dim, 2)))
+    combs = np.array(list(combinations(range(Q_dim), 2)))
+
+    # Find rvec from the first cluster of samples
+    rvec = np.linalg.norm(samples[num_centers , :] - samples[num_centers + 1, :]) / 2.
+    rvec = util.fix_dimensions_vector_2darray(rvec)
+
+    # Organie the data corresponsing to second deriviative and mixed partials
+    
+    hessian_tensor = list()
+    for c in range(num_centers):
+        inds_temp_data = np.append(np.array([c]), np.array(range(num_centers + c * (num_samples_percenter - 1), num_centers + (c + 1) * (num_samples_percenter - 1))))
+        data_temp = data[inds_temp_data]
+
+        scnd_inds = np.append(np.array([0]), np.array(range(1 + num_partials * 4, 1 + num_partials * 4 + Q_dim * 4)))
+        partial_inds = range(1, num_partials * 4 + 1)
+        data_scnd = util.fix_dimensions_vector_2darray(util.clean_data(
+            data_temp[scnd_inds]))
+        data_partials = util.fix_dimensions_vector_2darray(util.clean_data(
+            data_temp[partial_inds]))
+
+        # Construct indices for CFD gradient approxiation
+        inds = np.array(range(0, 4 * num_partials)).reshape(num_partials, 4)
+        hessian_vec_partials = (data_partials[inds[:, 0]] - data_partials[inds[:, 1]] - data_partials[inds[:, 2]] + data_partials[inds[:, 3]]) / (4 * rvec)
+
+        inds = np.array(range(1, Q_dim * 4 + 1)).reshape(Q_dim, 4)
+        inds = np.append(np.zeros([Q_dim, 1], dtype=int), inds, axis=1)
+
+        hessian_vec_scnds = (-30 * data_scnd[inds[:, 0]] + 16 * data_scnd[inds[:, 1]] - data_scnd[inds[:, 2]] + 16 * data_scnd[inds[:, 3]] - data_scnd[inds[:, 4]]) / (12 * rvec ** 2)
+
+        hessian_mat = np.diag(hessian_vec_scnds[:, 0])
+
+        # Fill the upper and lower triangles with the partials
+        hessian_mat[combs[:,0], combs[:, 1]] = hessian_vec_partials[:, 0]
+        hessian_mat[combs[:,1], combs[:, 0]] = hessian_vec_partials[:, 0]
+
+        # Now add the current hessian_mat to the hessian_tensor (currently a list
+        # that will be changed to a tensor before returing
+        hessian_tensor.append(hessian_mat)
+
+    # Reshape and organize
+    #gradient_tensor = np.reshape(gradient_mat.transpose(), [1,
+    #   Lambda_dim, num_centers], order='F').transpose(2, 0, 1)
+
+    return np.array(hessian_tensor)
+
