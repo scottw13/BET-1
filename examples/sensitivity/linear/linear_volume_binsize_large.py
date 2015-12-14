@@ -49,7 +49,7 @@ G = grad.calculate_gradients_rbf(samples, data, centers=samples[:num_centers, :]
 # inverse solution (volume).  The most robust method for this is
 # :meth:~bet.sensitivity.chooseQoIs.chooseOptQoIs_large which returns the
 # best set of 2, 3, 4 ... until Lambda_dim.  This method returns a list of
-# matrices.  Each matrix has 10 rows, the first column representing the
+# matrices.  Each matrix has 2 rows, the first column representing the
 # expected inverse volume ratio, and the rest of the columns the corresponding
 # QoI indices.
 best_sets = cQoI.chooseOptQoIs_large(G, max_qois_return=5,
@@ -98,9 +98,9 @@ percentile = 1.0
 # Sort samples by highest probability density and find how many samples lie in
 # the support of the inverse solution.  With the Monte Carlo assumption, this
 # also tells us the approximate volume of this support.
-(num_samples, P_high, samples_high, lam_vol_high, data_high) =\
+(num_samples, P_high, samples_high, lam_vol_high, data_high, _) =\
     postTools.sample_highest_prob(top_percentile=percentile, P_samples=P,
-    samples=samples, lam_vol=lam_vol,data = data,sort=True)
+    samples=samples, lam_vol=lam_vol, data = data, sort=True)
 
 # Print the number of samples that make up the highest percentile percent
 # samples and ratio of the volume of the parameter domain they take up
