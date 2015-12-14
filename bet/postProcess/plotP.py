@@ -172,6 +172,17 @@ def plot_2D_marginal_probs(marginals, bins, lam_domain,
     :type lambda_label: list of length nbins of strings or None
 
     """
+    '''
+    marginals_list = []
+    for key,value in marginals.iteritems():
+        temp=[value]
+        marginals_list.append(temp)
+    marginals_array = np.resize(np.array(marginals_list), [bins[0].shape[0]-1, bins[0].shape[0]-1])
+    marginals_array = np.round(marginals_array + .49999)
+    key = marginals.keys()
+    marginals[key[0]] = marginals_array
+    '''
+
     from matplotlib import cm
     if plot_surface:
         from mpl_toolkits.mplot3d import Axes3D
@@ -184,12 +195,12 @@ def plot_2D_marginal_probs(marginals, bins, lam_domain,
             ax = fig.add_subplot(111)
             boxSize = (bins[i][1]-bins[i][0])*(bins[j][1]-bins[j][0])
             quadmesh = ax.imshow(marginals[(i, j)].transpose()/boxSize,
-                    interpolation='bicubic', cmap=cm.jet, 
+                    interpolation='bicubic', cmap=cm.CMRmap_r, 
                     extent=[lam_domain[i][0], lam_domain[i][1],
                     lam_domain[j][0], lam_domain[j][1]], origin='lower',
                     vmax=marginals[(i, j)].max()/boxSize, vmin=0, aspect='auto')
             if type(lam_ref) != type(None):
-                ax.plot(lam_ref[i], lam_ref[j], 'ko', markersize=10)
+                ax.plot(lam_ref[i], lam_ref[j], 'wo', markersize=10)
             if lambda_label == None:
                 label1 = r'$\lambda_{' + str(i+1) + '}$'
                 label2 = r'$\lambda_{' + str(j+1) + '}$'
@@ -200,7 +211,7 @@ def plot_2D_marginal_probs(marginals, bins, lam_domain,
             ax.set_ylabel(label2)
             label_cbar = r'$\rho_{\lambda_{' + str(i+1) + '}, ' 
             label_cbar += r'\lambda_{' + str(j+1) + '}' + '}$ (Lesbesgue)'
-            fig.colorbar(quadmesh, ax=ax, label=label_cbar)
+            #fig.colorbar(quadmesh, ax=ax, label=label_cbar)
             plt.axis([lam_domain[i][0], lam_domain[i][1], lam_domain[j][0],
                 lam_domain[j][1]]) 
             fig.savefig(filename + "_2D_" + str(i) + "_" + str(j) + ".eps", transparent=True)
