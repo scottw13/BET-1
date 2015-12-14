@@ -107,7 +107,10 @@ def calculate_avg_support(grad_tensor, qoi_set, bin_size=None):
     # support of the unit hypercube.
     if bin_size is None:
         bin_support = 1.0
+    elif type(bin_size) is float:
+        bin_support = bin_size ** (len(qoi_set))
     else:
+        bin_size = util.fix_dimensions_vector(bin_size)
         bin_support = np.prod(bin_size[qoi_set])
 
     # Calculate the singular values of the matrix formed by the gradient
