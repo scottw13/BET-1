@@ -9,13 +9,19 @@ from itertools import combinations
 from bet.Comm import comm
 import bet.util as util
 from scipy import stats
+import bet.sensitivity.gradients as grad
 
-def calculate_avg_condnum(grad_tensor, qoi_set):
+def calculate_avg_skewness(grad_tensor, qoi_set):
     r"""
     Given gradient vectors at some points (centers) in the parameter space and
+<<<<<<< HEAD
     given a specific set of QoIs, caculate the average condition number of the
     matrices formed by the gradient vectors of each QoI map at each center.
 
+=======
+    given a specific set of QoIs, caculate the average skewness of the matrices
+    formed by the gradient vectors of each QoI map at each center.
+>>>>>>> 408be856a3edbfb6d04a049e63ab048455d8670c
     :param grad_tensor: Gradient vectors at each center in the parameter space
         :math:`\Lambda` for each QoI map.
     :type grad_tensor: :class:`np.ndarray` of shape (num_centers, num_qois,
@@ -25,36 +31,75 @@ def calculate_avg_condnum(grad_tensor, qoi_set):
     :param list qoi_set: List of QoI indices
     
     :rtype: tuple
+<<<<<<< HEAD
     :returns: (condnum, singvals) where condnum is a float and singvals
         has shape (num_centers, Data_dim)
     
+=======
+    :returns: (hmean_skewG, skewgi) where hmean_skewG is a float and skewgi
+        has shape (num_centers, data_dim)
+>>>>>>> 408be856a3edbfb6d04a049e63ab048455d8670c
     """
     # Calculate the singular values of the matrix formed by the gradient
     # vectors of each QoI map.  This gives a set of singular values for each
     # center.
-    singvals = np.linalg.svd(grad_tensor[:, qoi_set, :], compute_uv=False)
-    indz = singvals[:, -1] == 0
-    if np.sum(indz) == singvals.shape[0]:
-        hmean_condnum = np.inf
-    else:
-        singvals[indz, 0] = np.inf
-        singvals[indz, -1] = 1
-        condnums = singvals[:, 0] / singvals[:, -1]
-        hmean_condnum = stats.hmean(condnums)
+    G = grad_tensor[:, qoi_set, :]
+    num_centers = G.shape[0]
+    data_dim = G.shape[1]
 
-    return hmean_condnum, singvals
+    singvals = np.linalg.svd(G, compute_uv=False)
+    # The measure of the parallelepipeds defined by the rows of of each Jacobian
+    muG = np.tile(np.prod(singvals, axis=1), [data_dim, 1]).transpose()
 
-def calculate_avg_volume(grad_tensor, qoi_set, bin_volume=None):
+    # Calcualte the measure of the parallelepipeds defined by the rows of each
+    # Jacobian if we remove the ith row.
+    muGi = np.zeros([num_centers, data_dim])
+    for i in range(G.shape[1]):
+        muGi[:, i] = np.prod(np.linalg.svd(np.delete(G, i, axis=1),
+            compute_uv=False), axis=1)
+
+    # Find the norm of each gradient vector
+    normgi = np.linalg.norm(G, axis=2)
+
+    # Find the norm of the new vector, giperp, that is perpendicular to the span
+    # of the other vectors and defines a parallelepiped of the same measure.
+    normgiperp = muG / muGi
+
+    # We now calculate the local skewness
+    skewgi = np.zeros([num_centers, data_dim])
+
+    # The local skewness is calculate for nonzero giperp
+    skewgi[normgiperp!=0] = normgi[normgiperp!=0] / normgiperp[normgiperp!=0]
+
+    # If giperp is the zero vector, it is not GD from the rest of the gradient
+    # vectors, so the skewness is infinity.
+    skewgi[normgiperp==0] = np.inf
+
+    # If the norm of giperp is infinity, then the rest of the vector were not GD
+    # to begin with, so skewness is infinity.
+    skewgi[normgiperp==np.inf] = np.inf
+
+    # The local skewness is the max skewness of each vector relative the rest
+    skewG = np.max(skewgi, axis=1)
+    skewG[np.isnan(skewG)]=np.inf
+
+    # We have may have values equal to infinity, so we consider the harmonic
+    # mean.
+    hmean_skewG = stats.hmean(skewG)
+
+    return hmean_skewG, skewgi
+
+def calculate_avg_support(grad_tensor, qoi_set, bin_size=None):
     r"""
     If you are using ``bin_ratio`` to define the hyperrectangle in the Data
     space you must must give this method gradient vectors normalized with
     respect to the 1-norm.  If you are using ``bin_size`` to define the
     hyperrectangle in the Data space you must give this method the original
-    gradient vectors. If you also give a ``bin_volume``, this method will
-    approximate the volume of the region of non-zero probability in the inverse
+    gradient vectors. If you also give a ``bin_support``, this method will
+    approximate the support of the region of non-zero probability in the inverse
     solution.
     Given gradient vectors at some points (centers) in the parameter space
-    and given a specific set of QoIs, calculate the average volume of the 
+    and given a specific set of QoIs, calculate the average support of the 
     inverse image of a box in the data space assuming the mapping is linear near
     each center.
     
@@ -65,18 +110,23 @@ def calculate_avg_volume(grad_tensor, qoi_set, bin_volume=None):
         we have approximated the gradient vectors and num_qois is the number of
         QoIs we are given.
     :param list qoi_set: List of QoI indices
-    :param float bin_volume: The volume of the Data_dim hyperrectangle to
-        invert into :math:`\Lambda`
-    
+    :param bin_size: The length of the interval of uncertainty in each
+        QoI.
+    :type bin_size: :class:`np.ndarray` of shape (num_qois,).
     :rtype: tuple
-    :returns: (avg_volume, singvals) where avg_volume is a float and singvals
+    :returns: (avg_support, singvals) where avg_support is a float and singvals
         has shape (num_centers, Data_dim)
     
     """
-    # If no volume is given, we consider how this set of QoIs we change the
-    # volume of the unit hypercube.
-    if bin_volume is None:
-        bin_volume = 1.0
+    # If no bin_size is given, we consider how this set of QoIs we change the
+    # support of the unit hypercube.
+    if bin_size is None:
+        bin_support = 1.0
+    elif type(bin_size) is float:
+        bin_support = bin_size ** (len(qoi_set))
+    else:
+        bin_size = util.fix_dimensions_vector(bin_size)
+        bin_support = np.prod(bin_size[qoi_set])
 
     # Calculate the singular values of the matrix formed by the gradient
     # vectors of each QoI map.  This gives a set of singular values for each
@@ -84,24 +134,24 @@ def calculate_avg_volume(grad_tensor, qoi_set, bin_volume=None):
     singvals = np.linalg.svd(grad_tensor[:, qoi_set, :], compute_uv=False)
 
     # Find the average produt of the singular values over each center, then use
-    # this to compute the average volume of the inverse solution.
+    # this to compute the average support of the inverse solution.
     avg_prod_singvals = np.mean(np.prod(singvals, axis=1))
     if avg_prod_singvals == 0:
-        avg_volume = np.inf
+        avg_support = np.inf
     else:
-        avg_volume = bin_volume / avg_prod_singvals
+        avg_support = bin_support / avg_prod_singvals
 
-    return avg_volume, singvals
+    return avg_support, singvals
 
 def chooseOptQoIs(grad_tensor, qoiIndices=None, num_qois_return=None,
-        num_optsets_return=None, inner_prod_tol=1.0, volume=False,
-        remove_zeros=True):
+        num_optsets_return=None, inner_prod_tol=1.0, support=False,
+        remove_zeros=True, bin_support=None):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     set of QoIs to choose from, and the number of desired QoIs to return, this
     method returns the ``num_optsets_return`` best sets of QoIs with with
     repsect to either the average condition number of the matrix formed by the
-    gradient vectors of each QoI map, or the average volume of the inverse
+    gradient vectors of each QoI map, or the average support of the inverse
     problem us this set of QoIs, computed as the product of the singular values
     of the same matrix.  This method is brute force, i.e., if the method is
     given 10,000 QoIs and told to return the N best sets of 3, it will check all
@@ -121,31 +171,35 @@ def chooseOptQoIs(grad_tensor, qoiIndices=None, num_qois_return=None,
         inverse problem.  Default is Lambda_dim
     :param int num_optsets_return: Number of best sets to return
         Default is 10
-    :param boolean volume: If measure is True, use ``calculate_avg_volume``
+    :param boolean support: If measure is True, use ``calculate_avg_support``
         to determine optimal QoIs
     :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
         QoIs that have a zero gradient vector at atleast one point in
         :math:`\Lambda`.
     
     :rtype: `np.ndarray` of shape (num_optsets_returned, num_qois_returned + 1)
-    :returns: condnum_indices_mat
-    
-    """
-    (condnum_indices_mat, _) = chooseOptQoIs_verbose(grad_tensor,
-        qoiIndices, num_qois_return, num_optsets_return, inner_prod_tol, volume,
-        remove_zeros)
+    :returns: skewness_indices_mat
 
-    return condnum_indices_mat
+    """
+
+    if bin_support is None:
+        bin_support = 1.0
+
+    (skewness_indices_mat, _) = chooseOptQoIs_verbose(grad_tensor,
+        qoiIndices, num_qois_return, num_optsets_return, inner_prod_tol, support,
+        remove_zeros, bin_support)
+
+    return skewness_indices_mat
 
 def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
-            num_optsets_return=None, inner_prod_tol=1.0, volume=False,
-            remove_zeros=True):
+            num_optsets_return=None, inner_prod_tol=1.0, support=False,
+            remove_zeros=True, bin_support=None):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     set of QoIs to choose from, and the number of desired QoIs to return, this
     method returns the ``num_optsets_return`` best sets of QoIs with with
     repsect to either the average condition number of the matrix formed by the
-    gradient vectors of each QoI map, or the average volume of the inverse
+    gradient vectors of each QoI map, or the average support of the inverse
     problem us this set of QoIs, computed as the product of the singular values
     of the same matrix.  This method is brute force, i.e., if the method is
     given 10,000 QoIs and told to return the N best sets of 3, it will check all
@@ -165,14 +219,14 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
         inverse problem.  Default is Lambda_dim
     :param int num_optsets_return: Number of best sets to return
         Default is 10
-    :param boolean volume: If volume is True, use ``calculate_avg_volume``
+    :param boolean support: If support is True, use ``calculate_avg_support``
         to determine optimal QoIs
     :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
         QoIs that have a zero gradient vector at atleast one point in
         :math:`\Lambda`.
     
     :rtype: tuple
-    :returns: (condnum_indices_mat, optsingvals) where condnum_indices_mat has
+    :returns: (skewness_indices_mat, optsingvals) where skewness_indices_mat has
         shape (num_optsets_return, num_qois_return+1) and optsingvals
         has shape (num_centers, num_qois_return, num_optsets_return)
     
@@ -185,6 +239,9 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
         num_qois_return = Lambda_dim
     if num_optsets_return is None:
         num_optsets_return = 10
+
+    if bin_support is None:
+        bin_support = 1.0
 
     qoiIndices = find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices,
         remove_zeros)
@@ -203,23 +260,23 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
 
     # For each combination, check the skewness and keep the sets
     # that have the best skewness, i.e., smallest condition number
-    condnum_indices_mat = np.zeros([num_optsets_return, num_qois_return + 1])
-    condnum_indices_mat[:, 0] = np.inf
+    skewness_indices_mat = np.zeros([num_optsets_return, num_qois_return + 1])
+    skewness_indices_mat[:, 0] = np.inf
     optsingvals_tensor = np.zeros([num_centers, num_qois_return,
         num_optsets_return])
     for qoi_set in range(len(qoi_combs)):
-        if volume == False:
-            (current_condnum, singvals) = calculate_avg_condnum(grad_tensor,
+        if support == False:
+            (current_skewness, singvals) = calculate_avg_skewness(grad_tensor,
                 qoi_combs[qoi_set])
         else:
-            (current_condnum, singvals) = calculate_avg_volume(grad_tensor,
-                qoi_combs[qoi_set])
+            (current_skewness, singvals) = calculate_avg_support(grad_tensor,
+                qoi_combs[qoi_set], bin_support)
 
-        if current_condnum < condnum_indices_mat[-1, 0]:
-            condnum_indices_mat[-1, :] = np.append(np.array([current_condnum]),
+        if current_skewness < skewness_indices_mat[-1, 0]:
+            skewness_indices_mat[-1, :] = np.append(np.array([current_skewness]),
                 qoi_combs[qoi_set])
-            order = condnum_indices_mat[:, 0].argsort()
-            condnum_indices_mat = condnum_indices_mat[order]
+            order = skewness_indices_mat[:, 0].argsort()
+            skewness_indices_mat = skewness_indices_mat[order]
 
             optsingvals_tensor[:, :, -1] = singvals
             optsingvals_tensor = optsingvals_tensor[:, :, order]
@@ -228,27 +285,27 @@ def chooseOptQoIs_verbose(grad_tensor, qoiIndices=None, num_qois_return=None,
     comm.Barrier()
 
     # Gather the best sets and condition numbers from each processor
-    condnum_indices_mat = np.array(comm.gather(condnum_indices_mat, root=0))
+    skewness_indices_mat = np.array(comm.gather(skewness_indices_mat, root=0))
     optsingvals_tensor = np.array(comm.gather(optsingvals_tensor, root=0))
 
     # Find the num_optsets_return smallest condition numbers from all processors
     if comm.rank == 0:
-        condnum_indices_mat = condnum_indices_mat.reshape(num_optsets_return * \
+        skewness_indices_mat = skewness_indices_mat.reshape(num_optsets_return * \
             comm.size, num_qois_return + 1)
         optsingvals_tensor = optsingvals_tensor.reshape(num_centers,
             num_qois_return, num_optsets_return * comm.size)
-        order = condnum_indices_mat[:, 0].argsort()
+        order = skewness_indices_mat[:, 0].argsort()
 
-        condnum_indices_mat = condnum_indices_mat[order]
-        condnum_indices_mat = condnum_indices_mat[:num_optsets_return, :]
+        skewness_indices_mat = skewness_indices_mat[order]
+        skewness_indices_mat = skewness_indices_mat[:num_optsets_return, :]
 
         optsingvals_tensor = optsingvals_tensor[:, :, order]
         optsingvals_tensor = optsingvals_tensor[:, :, :num_optsets_return]
 
-    condnum_indices_mat = comm.bcast(condnum_indices_mat, root=0)
+    skewness_indices_mat = comm.bcast(skewness_indices_mat, root=0)
     optsingvals_tensor = comm.bcast(optsingvals_tensor, root=0)
 
-    return (condnum_indices_mat, optsingvals_tensor)
+    return (skewness_indices_mat, optsingvals_tensor)
 
 def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
         remove_zeros=True):
@@ -335,12 +392,8 @@ def find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices=None,
     return unique_vecs
 
 def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
-        num_optsets_return, cond_tol, volume):
+        num_optsets_return, cond_tol, support):
     r"""
-
-    .. todo::  Use the idea we only know vectors are with 10% accuracy to guide
-        inner_prod tol and condnum_tol.
-    
     Given gradient vectors at each center in the parameter space and given
     good sets of size n - 1, return good sets of size n.  That is, return
     sets of size n that have average condition number less than some tolerance.
@@ -359,7 +412,7 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
     :param int num_optsets_return: Number of best sets to return
     :param float cond_tol: Throw out all sets of QoIs with average condition
         number greater than this.
-    :param boolean volume: If volume is True, use ``calculate_avg_volume``
+    :param boolean support: If support is True, use ``calculate_avg_support``
         to determine optimal QoIs
     
     :rtype: tuple
@@ -409,21 +462,21 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
             count_qois += 1
             curr_set = util.fix_dimensions_vector_2darray(qoi_combs[qoi_set])\
                 .transpose()
-            if volume == False:
-                (current_condnum, singvals) = calculate_avg_condnum(grad_tensor,
+            if support == False:
+                (current_skewness, singvals) = calculate_avg_skewness(grad_tensor,
                     qoi_combs[qoi_set])
             else:
-                (current_condnum, singvals) = calculate_avg_volume(grad_tensor,
+                (current_skewness, singvals) = calculate_avg_support(grad_tensor,
                     qoi_combs[qoi_set])
 
             # If its a good set, add it to good_sets
-            if current_condnum < cond_tol:
+            if current_skewness < cond_tol:
                 good_sets = np.append(good_sets, curr_set, axis=0)
 
                 # If the average condition number is less than the max condition
                 # number in our best_sets, add it to best_sets
-                if current_condnum < best_sets[-1, 0]:
-                    best_sets[-1, :] = np.append(np.array([current_condnum]),
+                if current_skewness < best_sets[-1, 0]:
+                    best_sets[-1, :] = np.append(np.array([current_skewness]),
                         qoi_combs[qoi_set])
                     order = best_sets[:, 0].argsort()
                     best_sets = best_sets[order]
@@ -470,14 +523,13 @@ def find_good_sets(grad_tensor, good_sets_prev, unique_indices,
 
 def chooseOptQoIs_large(grad_tensor, qoiIndices=None, max_qois_return=None,
         num_optsets_return=None, inner_prod_tol=None, cond_tol=None,
-        volume=False, remove_zeros=True):
+        support=False, remove_zeros=True):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     large set of QoIs to choose from, and the number of desired QoIs to return,
     this method return the set of optimal QoIs of size 2, 3, ... max_qois_return
     to use in the inverse problem by choosing the sets with the smallext average
-    condition number or volume.
-    
+    condition number or support.
     :param grad_tensor: Gradient vectors at each point of interest in the
         parameter space :math:`\Lambda` for each QoI map.
     :type grad_tensor: :class:`np.ndarray` of shape (num_centers, num_qois,
@@ -495,27 +547,27 @@ def chooseOptQoIs_large(grad_tensor, qoiIndices=None, max_qois_return=None,
         between two QoI maps.
     :param float cond_tol: Throw out all sets of QoIs with average condition
         number greater than this.
-    :param boolean volume: If volume is True, use ``calculate_avg_volume``
+    :param boolean support: If support is True, use ``calculate_avg_support``
         to determine optimal QoIs
     :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
         QoIs that have a zero gradient vector at atleast one point in
         :math:`\Lambda`.
     
     :rtype: tuple
-    :returns: (condnum_indices_mat, optsingvals) where condnum_indices_mat has
+    :returns: (skewness_indices_mat, optsingvals) where skewness_indices_mat has
         shape (num_optsets_return, num_qois_return+1) and optsingvals
         has shape (num_centers, num_qois_return, num_optsets_return)
     
     """
     (best_sets, _) = chooseOptQoIs_large_verbose(grad_tensor, qoiIndices,
-        max_qois_return, num_optsets_return, inner_prod_tol, cond_tol, volume,
+        max_qois_return, num_optsets_return, inner_prod_tol, cond_tol, support,
         remove_zeros)
 
     return best_sets
 
 def chooseOptQoIs_large_verbose(grad_tensor, qoiIndices=None,
         max_qois_return=None, num_optsets_return=None, inner_prod_tol=None,
-        cond_tol=None, volume=False, remove_zeros=True):
+        cond_tol=None, support=False, remove_zeros=True):
     r"""
     Given gradient vectors at some points (centers) in the parameter space, a
     large set of QoIs to choose from, and the number of desired QoIs to return,
@@ -542,14 +594,14 @@ def chooseOptQoIs_large_verbose(grad_tensor, qoiIndices=None,
         QoIs that has average inner product greater than this.  Default is 0.9.
     :param float cond_tol: Throw out all sets of QoIs with average condition
         number greater than this.  Default is max_float.
-    :param boolean volume: If volume is True, use ``calculate_avg_volume``
+    :param boolean support: If support is True, use ``calculate_avg_support``
         to determine optimal QoIs
     :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
         QoIs that have a zero gradient vector at atleast one point in
         :math:`\Lambda`.
     
     :rtype: tuple
-    :returns: (condnum_indices_mat, optsingvals) where condnum_indices_mat has
+    :returns: (skewness_indices_mat, optsingvals) where skewness_indices_mat has
         shape (num_optsets_return, num_qois_return+1) and optsingvals is a list
         where each element has shape (num_centers, num_qois_return,
         num_optsets_return).  num_qois_return will change for each element of
@@ -582,10 +634,224 @@ def chooseOptQoIs_large_verbose(grad_tensor, qoiIndices=None,
     for qois_return in range(2, max_qois_return + 1):
         (good_sets_curr, best_sets_curr, optsingvals_tensor_curr) = \
             find_good_sets(grad_tensor, good_sets_curr, unique_indices,
-            num_optsets_return, cond_tol, volume)
+            num_optsets_return, cond_tol, support)
         best_sets.append(best_sets_curr)
         optsingvals_list.append(optsingvals_tensor_curr)
         if comm.rank == 0:
             print best_sets_curr
 
     return (best_sets, optsingvals_list)
+
+def chooseOptQoIs_multicriteria(grad_tensor, omega = [1.0, 1.0], qoiIndices=None,
+            num_qois_return=None, num_optsets_return=None, inner_prod_tol=1.1,
+            remove_zeros=False, bin_support=None):
+    r"""
+    Given gradient vectors at some points (centers) in the parameter space, a
+    set of QoIs to choose from, and the number of desired QoIs to return, this
+    method returns the ``num_optsets_return`` best sets of QoIs with with
+    repsect to the multicriteria optimization problem that minimizes a weighted
+    combination of the support and skewness.  This method is brute force, i.e.,
+    if the method is given 10,000 QoIs and told to return the N best sets of 3,
+    it will check all 10,000 choose 3 possible sets.
+    :param grad_tensor: Gradient vectors at each point of interest in the
+        parameter space :math:`\Lambda` for each QoI map.
+    :type grad_tensor: :class:`np.ndarray` of shape (num_centers, num_qois,
+        Lambda_dim) where num_centers is the number of points in :math:`\Lambda`
+        we have approximated the gradient vectors and num_qois is the total
+        number of possible QoIs to choose from
+    :param list omega: The weights for the multicritera optimization problem
+    :param qoiIndices: Set of QoIs to consider from grad_tensor.  Default is
+        range(0, grad_tensor.shape[1])
+    :type qoiIndices: :class:`np.ndarray` of size (1, num QoIs to consider)
+    :param int num_qois_return: Number of desired QoIs to use in the
+        inverse problem.  Default is Lambda_dim
+    :param int num_optsets_return: Number of best sets to return
+        Default is 10
+    :param boolean remove_zeros: If True, ``find_unique_vecs`` will remove any
+        QoIs that have a zero gradient vector at atleast one point in
+        :math:`\Lambda`.
+    :rtype: tuple
+    :returns: (optimals_indices_mat, optsingvals, optskewgi) where
+        skewness_indices_mat has shape (num_optsets_return, num_qois_return + 1)
+        optsingvals has shape (num_centers, num_qois_return, num_optsets_return)
+        and optskewgi has shape (num_centers, num_qois_return, num_optsets_return)
+    """
+    num_centers = grad_tensor.shape[0]
+    Lambda_dim = grad_tensor.shape[2]
+    omega = list(omega)
+    if qoiIndices is None:
+        qoiIndices = range(0, grad_tensor.shape[1])
+    if num_qois_return is None:
+        num_qois_return = Lambda_dim
+    if num_optsets_return is None:
+        num_optsets_return = 10
+
+    if bin_support is None:
+        bin_support = 1.0
+
+    qoiIndices = find_unique_vecs(grad_tensor, inner_prod_tol, qoiIndices,
+        remove_zeros)
+
+    # Find all posible combinations of QoIs
+    if comm.rank == 0:
+        qoi_combs = np.array(list(combinations(list(qoiIndices),
+                        num_qois_return)))
+        print 'Possible sets of QoIs : ', qoi_combs.shape[0]
+        qoi_combs = np.array_split(qoi_combs, comm.size)
+    else:
+        qoi_combs = None
+
+    # Scatter them throughout the processors
+    qoi_combs = comm.scatter(qoi_combs, root=0)
+
+    # For each combination, find the support and skewness and keep the best
+    # num_qois_return that have the smallest sum
+    sum_indices_mat = np.zeros([num_optsets_return, num_qois_return + 1])
+    sum_indices_mat[:, 0] = np.inf
+    optsingvals_tensor = np.zeros([num_centers, num_qois_return,
+        num_optsets_return])
+    optskewgi_tensor = np.zeros([num_centers, num_qois_return,
+        num_optsets_return])
+    for qoi_set in range(len(qoi_combs)):
+        (current_support, singvals) = calculate_avg_support(grad_tensor,
+            qoi_combs[qoi_set], bin_support)
+        (current_skewness, skewgi) = calculate_avg_skewness(grad_tensor,
+            qoi_combs[qoi_set])
+
+        # Current sum is the distance of the weighted sum to (1, 0), the ideal point.
+        current_sum = omega[0] * current_support / (current_support + 1) + \
+            omega[1] * (current_skewness - 1) / current_skewness
+
+        if current_sum < sum_indices_mat[-1, 0]:
+            sum_indices_mat[-1, :] = np.append(np.array([current_sum]),
+                qoi_combs[qoi_set])
+            order = sum_indices_mat[:, 0].argsort()
+            sum_indices_mat = sum_indices_mat[order]
+
+            optsingvals_tensor[:, :, -1] = singvals
+            optsingvals_tensor = optsingvals_tensor[:, :, order]
+
+            optskewgi_tensor[:, :, -1] = skewgi
+            optskewgi_tensor = optskewgi_tensor[:, :, order]
+
+    # Wait for all processes to get to this point
+    comm.Barrier()
+
+    # Gather the best sets and condition numbers from each processor
+    sum_indices_mat = np.array(comm.gather(sum_indices_mat, root=0))
+    optsingvals_tensor = np.array(comm.gather(optsingvals_tensor, root=0))
+    optskewgi_tensor = np.array(comm.gather(optskewgi_tensor, root=0))
+
+    # Find the num_optsets_return smallest condition numbers from all processors
+    if comm.rank == 0:
+        sum_indices_mat = sum_indices_mat.reshape(num_optsets_return * \
+            comm.size, num_qois_return + 1)
+        optsingvals_tensor = optsingvals_tensor.reshape(num_centers,
+            num_qois_return, num_optsets_return * comm.size)
+        optskewgi_tensor = optskewgi_tensor.reshape(num_centers,
+            num_qois_return, num_optsets_return * comm.size)
+        order = sum_indices_mat[:, 0].argsort()
+
+        sum_indices_mat = sum_indices_mat[order]
+        sum_indices_mat = sum_indices_mat[:num_optsets_return, :]
+
+        optsingvals_tensor = optsingvals_tensor[:, :, order]
+        optsingvals_tensor = optsingvals_tensor[:, :, :num_optsets_return]
+
+        optskewgi_tensor = optskewgi_tensor[:, :, order]
+        optskewgi_tensor = optskewgi_tensor[:, :, :num_optsets_return]
+
+    sum_indices_mat = comm.bcast(sum_indices_mat, root=0)
+    optsingvals_tensor = comm.bcast(optsingvals_tensor, root=0)
+    optskewgi_tensor = comm.bcast(optskewgi_tensor, root=0)
+
+    return (sum_indices_mat, optsingvals_tensor, optskewgi_tensor)
+
+def chooseOptQoIs_uniform_multicriteria(samples, data):
+
+    Lambda_dim = samples.shape[1]
+    num_optsets_return = 10
+    num_qois_return = Lambda_dim
+    qoiIndices = range(0, data.shape[1])
+    
+    #num_centers = min(samples.shape[0], 100)
+    num_centers = samples.shape[0]
+    centers = samples[:num_centers, :]
+    #grad_tensor = grad.calculate_gradients_rbf(samples, data, centers, num_neighbors=Lambda_dim * 5, normalize=False)
+    grad_tensor = grad.calculate_gradients_rbf(samples, data, centers, num_neighbors=20, normalize=False)
+    omega = [1.0, 1.0]
+
+    # Find all posible combinations of QoIs
+    if comm.rank == 0:
+        qoi_combs = np.array(list(combinations(list(qoiIndices),
+                        num_qois_return)))
+        print 'Possible sets of QoIs : ', qoi_combs.shape[0]
+        qoi_combs = np.array_split(qoi_combs, comm.size)
+    else:
+        qoi_combs = None
+
+    # Scatter them throughout the processors
+    qoi_combs = comm.scatter(qoi_combs, root=0)
+
+    # For each combination, find the support and skewness and keep the best
+    # num_qois_return that have the smallest sum
+    sum_indices_mat = np.zeros([num_optsets_return, num_qois_return + 1])
+    sum_indices_mat[:, 0] = np.inf
+    optsingvals_tensor = np.zeros([num_centers, num_qois_return,
+        num_optsets_return])
+    optskewgi_tensor = np.zeros([num_centers, num_qois_return,
+        num_optsets_return])
+    for qoi_set in range(len(qoi_combs)):
+        (current_support, singvals) = calculate_avg_support(grad_tensor,
+            qoi_combs[qoi_set], bin_support=1.0)
+        (current_skewness, skewgi) = calculate_avg_skewness(grad_tensor,
+            qoi_combs[qoi_set])
+
+        # Current sum is the distance of the weighted sum to (1, 0), the ideal point.
+        current_sum = omega[0] * current_support / (current_support + 1) + \
+            omega[1] * (current_skewness - 1) / current_skewness
+
+        if current_sum < sum_indices_mat[-1, 0]:
+            sum_indices_mat[-1, :] = np.append(np.array([current_sum]),
+                qoi_combs[qoi_set])
+            order = sum_indices_mat[:, 0].argsort()
+            sum_indices_mat = sum_indices_mat[order]
+
+            optsingvals_tensor[:, :, -1] = singvals
+            optsingvals_tensor = optsingvals_tensor[:, :, order]
+
+            optskewgi_tensor[:, :, -1] = skewgi
+            optskewgi_tensor = optskewgi_tensor[:, :, order]
+
+    # Wait for all processes to get to this point
+    comm.Barrier()
+
+    # Gather the best sets and condition numbers from each processor
+    sum_indices_mat = np.array(comm.gather(sum_indices_mat, root=0))
+    optsingvals_tensor = np.array(comm.gather(optsingvals_tensor, root=0))
+    optskewgi_tensor = np.array(comm.gather(optskewgi_tensor, root=0))
+
+    # Find the num_optsets_return smallest condition numbers from all processors
+    if comm.rank == 0:
+        sum_indices_mat = sum_indices_mat.reshape(num_optsets_return * \
+            comm.size, num_qois_return + 1)
+        optsingvals_tensor = optsingvals_tensor.reshape(num_centers,
+            num_qois_return, num_optsets_return * comm.size)
+        optskewgi_tensor = optskewgi_tensor.reshape(num_centers,
+            num_qois_return, num_optsets_return * comm.size)
+        order = sum_indices_mat[:, 0].argsort()
+
+        sum_indices_mat = sum_indices_mat[order]
+        sum_indices_mat = sum_indices_mat[:num_optsets_return, :]
+
+        optsingvals_tensor = optsingvals_tensor[:, :, order]
+        optsingvals_tensor = optsingvals_tensor[:, :, :num_optsets_return]
+
+        optskewgi_tensor = optskewgi_tensor[:, :, order]
+        optskewgi_tensor = optskewgi_tensor[:, :, :num_optsets_return]
+
+    sum_indices_mat = comm.bcast(sum_indices_mat, root=0)
+    optsingvals_tensor = comm.bcast(optsingvals_tensor, root=0)
+    optskewgi_tensor = comm.bcast(optskewgi_tensor, root=0)
+
+    return (sum_indices_mat, optsingvals_tensor, optskewgi_tensor)
