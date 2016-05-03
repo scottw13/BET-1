@@ -10,6 +10,60 @@ from bet.Comm import comm
 import bet.util as util
 from scipy import stats
 
+def calculate_avg_diagonal(input_set, qoi_set=None, bin_measure=None):
+    r"""
+    If you are using ``bin_ratio`` to define the hyperrectangle in the output
+    space you must must give this method gradient vectors normalized with
+    respect to the 1-norm.  If you are using ``bin_size`` to define the
+    hyperrectangle in the output space you must give this method the original
+    gradient vectors. If you also give a ``bin_measure``, this method will
+    approximate the diagonal of the region of non-zero probability in the inverse
+    solution.
+    Given gradient vectors at some points (centers) in the input space and
+    given a specific set of QoIs, calculate the expected diagonal of the
+    inverse image of a box in the data space using local linear approximations
+    of the map Q.
+    
+    :param input_set: The input sample set.  Make sure the attribute _jacobians
+        is not None.
+    :type input_set: :class:`~bet.sample.sample_set`
+    :param list qoi_set: List of QoI indices
+    :param float bin_measure: The measure of the output_dim hyperrectangle to
+        invert into the input space
+    
+    :rtype: tuple
+    :returns: (avg_measure, singvals) where avg_measure is a float and singvals
+        has shape (num_centers, output_dim)
+    
+    """
+
+    if input_set._jacobians is None:
+        raise ValueError("You must have jacobians to use this method.")
+    if qoi_set is None:
+        G = input_set._jacobians
+    else:
+        G = input_set._jacobians[:, qoi_set, :]
+    if G.shape[1] > G.shape[2]:
+        raise ValueError("Measure is not defined for more outputs than inputs.\
+            Try adding a qoi_set to evaluate the measure of.")
+
+    # If no measure is given, we consider how this set of QoIs will change the
+    # measure of the unit hypercube.
+    if bin_measure is None:
+        bin_measure = 1.0
+
+    """
+    ASSUME EACH QoI HAS SAME AMOUT OF UNCERTAINT, BIN IS A HYPERCUBE (FOR NOW)
+    """
+
+    # Calculate the average of the smallest singular value of the QoI matrix for each center.
+    avg_smallest_singval = np.mean(np.linalg.svd(G, compute_uv=False)[:, -1])
+
+    # The bound on the diagonal is given by sqrt(output_dim) * (1/avg_smallest_singval)
+    diagonal_bound = np.sqrt(G.shape[1]) / avg_smallest_singval
+
+    return diagonal_bound
+
 def calculate_avg_measure(input_set, qoi_set=None, bin_measure=None):
     r"""
     If you are using ``bin_ratio`` to define the hyperrectangle in the output
