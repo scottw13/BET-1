@@ -1,4 +1,4 @@
-# Copyright (C) 2014-2015 The BET Development Team
+# Copyright (C) 2014-2016 The BET Development Team
 
 # -*- coding: utf-8 -*-
 """
@@ -7,9 +7,10 @@ regular (hyperrectangle) multidimensional voronoi cells and for determining the
 volumes of these cells.
 """
 
+import logging
 import numpy as np
-from scipy import spatial
 import bet.util as util
+import bet.sample as samp
 
 def center_and_layer1_points_binsize(center_pts_per_edge, center, r_size,
         sur_domain): 
@@ -47,10 +48,10 @@ def center_and_layer1_points_binsize(center_pts_per_edge, center, r_size,
     rect_width = r_size*np.ones(sur_domain[:, 0].shape)
     rect_domain = np.column_stack([center - .5*rect_width,
         center + .5*rect_width])
-    if np.all(np.greater(r_size, rect_width)):
-        msg = "The hyperrectangle defined by this size is larger than the "
+    if np.any(np.greater(r_size, rect_width)):
+        msg = "The hyperrectangle defined by this size extends outside the "
         msg += "original domain."
-        print msg
+        logging.warning(msg)
     
     # determine the locations of the points for the 1st bounding layer
     layer1_left = rect_domain[:, 0]-rect_width/(2*center_pts_per_edge)
@@ -100,8 +101,8 @@ def center_and_layer1_points(center_pts_per_edge, center, r_ratio, sur_domain):
     """
     if np.all(np.greater(r_ratio, 1)):
         msg = "The hyperrectangle defined by this ratio is larger than the"
-        msg += "original domain."
-        print msg
+        msg += " original domain."
+        logging.warning(msg)
 
     # determine r_size from the width of the surrounding domain
     r_size = r_ratio*(sur_domain[:, 1]-sur_domain[:, 0])
@@ -123,7 +124,7 @@ def edges_regular(center_pts_per_edge, rect_domain, sur_domain):
     This method can also be used to tile ``sur_domain`` with points to define
     voronoi regions if the user sets ``r_ratio = 1``. use binratio below
 
-    :param list() center_pts_per_edge: number of center points per edge and
+    :param list center_pts_per_edge: number of center points per edge and
         additional two points will be added to create the bounding layer
     :param rect_domain: The rectangular domain to define the voronoi
         tesselation for. This domain should be contained in the ``sur_domain``.
@@ -134,18 +135,18 @@ def edges_regular(center_pts_per_edge, rect_domain, sur_domain):
     :type sur_domain: :class:`numpy.ndarray` of shape (mdim, 2)
 
     :rtype: tuple
-    :returns: interior_and_layer1 is a list of dim :class:`numpy.ndarray`s of
+    :returns: interior_and_layer1 is a list of dim :class:`numpy.ndarray` of
         shape (center_pts_per_edge+2,)
 
     """
     if np.any(np.greater_equal(sur_domain[:, 0], rect_domain[:, 0])):
         msg = "The hyperrectangle defined by this size is larger than the"
-        msg += "original domain."
-        print msg
+        msg += " original domain."
+        logging.warning(msg)
     elif np.any(np.less_equal(sur_domain[:, 1], rect_domain[:, 1])):
         msg = "The hyperrectangle defined by this size is larger than the"
-        msg += "original domain."
-        print msg
+        msg += " original domain."
+        logging.warning(msg)
     
     rect_edges = list()
     rect_and_sur_edges = list()
@@ -171,12 +172,12 @@ def edges_from_points(points):
     
     :param points: the coordindates of voronoi points that would generate
         these bins in each dimensions
-    :type points: list of dim :class:`numpy.ndarray`s of shape (nbins+2,)
+    :type points: list of dim :class:`numpy.ndarray` of shape (nbins+2,)
 
+    :rtype edges: A list() containing mdim :class:`numpy.ndarray` of shape
+        (nbins_per_dim+1,)
     :returns: edges, A sequence of arrays describing the edges of bins along
         each dimension.
-    :rtype edges: A list() containing mdim :class:`numpy.ndarray`s of shape
-        (nbins_per_dim+1,)
 
     """
     edges = list()
@@ -187,12 +188,12 @@ def edges_from_points(points):
 def histogramdd_volumes(edges, points):
     """
     Given a sequence of arrays describing the edges of voronoi cells (bins)
-    along each dimension and an 'ij' ordered sequence of points (1 per voronoi
+    along each dimension and an ``ij`` ordered sequence of points (1 per voronoi
     cell) returns a list of the volumes associated with these voronoi cells.
 
     :param edges: A sequence of arrays describing the edges of bins along
         each dimension.
-    :type edges: A list() containing mdim :class:`numpy.ndarray`s of shape
+    :type edges: A list() containing mdim :class:`numpy.ndarray` of shape
         (nbins_per_dim+1,)
     :param points: points used to define the voronoi tesselation (only the
         points that define regions of finite volumes)
@@ -242,10 +243,8 @@ def simple_fun_uniform(points, volumes, rect_domain):
         hyperrectangle of uniform probability
     :type rect_domain: :class:`numpy.ndarray` of shape (mdim, 2)
 
-    :rtype: tuple
-    :returns: (rho_D_M, points, d_Tree) where ``rho_D_M`` and
-        ``points`` are (mdim, M) :class:`~numpy.ndarray` and
-        `d_Tree` is the :class:`~scipy.spatial.KDTree` for points
+    :rtype: :class:`~bet.sample.voronoi_sample_set`
+    :returns: sample_set object defininng simple function approximation
 
     """
     util.fix_dimensions_data(points)
@@ -256,6 +255,8 @@ def simple_fun_uniform(points, volumes, rect_domain):
     rho_D_M = np.zeros(volumes.shape)
     # normalize on Lambda not D
     rho_D_M[inside] = volumes[inside]/np.sum(volumes[inside]) 
-    d_Tree = spatial.KDTree(points)
-    return (rho_D_M, points, d_Tree)
+    s_set = samp.voronoi_sample_set(dim=points.shape[1])
+    s_set.set_values(points)
+    s_set.set_probabilities(rho_D_M)
+    return s_set
 

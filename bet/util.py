@@ -1,7 +1,7 @@
 # Copyright (C) 2014-2015 The BET Development Team
 
 """
-The module contains general tools for BET.
+This module contains general tools for BET.
 """
 
 import numpy as np
@@ -80,10 +80,10 @@ def get_global_values(array, shape=None):
                 mpi_dtype = True
                 dtype = ptype
 
-        if type(shape) == type(None) or not mpi_dtype:
+        if shape is None or not mpi_dtype:
             # do a lowercase allgather
             a_shape = len(array.shape)
-            array = comm.allgather(array, array)
+            array = comm.allgather(array)
             if a_shape == 1:
                 return np.hstack(array)
             else:
